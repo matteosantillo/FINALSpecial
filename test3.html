@@ -1,0 +1,1857 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Pittsburgh Data Viewer</title>
+
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin=""/>
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
+    <script src="https://unpkg.com/leaflet.sync@0.2.4/L.Map.Sync.js"></script>
+
+    <script src="./PitNeighborhoods.js"></script>
+    <script src="./Arrests.js"></script>
+    <script src="./data/eduinc.js"></script>
+    <script src="./data/CensusChange.js"></script>
+    <script src="./data/Edu2014.js"></script>
+    <script src="./data/Income2014.js"></script>
+    <script src="./data/Poverty2014.js"></script>
+    <script src="./data/Edu2015.js"></script>
+    <script src="./data/Income2015.js"></script>
+    <script src="./data/Poverty2015.js"></script>
+</head>
+
+<style>
+    body, html {
+        height: 100%;
+        width: 100%;
+        margin: 0;
+        font-family: Tahoma, sans-serif;
+        display: flex;
+        flex-direction: column;
+        overflow: hidden; /* Prevent body scrollbars */
+    }
+
+    /* Styles for control panel */
+    #controls-area {
+        padding: 12px 15px;
+        background-color: #e9e9e9;
+        border-bottom: 1px solid #c0c0c0;
+        flex-shrink: 0;
+        display: flex;
+        gap: 20px;
+        align-items: center;
+        flex-wrap: wrap;
+        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+        overflow-x: auto;
+        -webkit-overflow-scrolling: touch;
+        position: relative; /* Needed for absolute positioning of popup */
+        z-index: 1002; /* Ensure controls are above map */
+    }
+
+    #view-switcher strong {
+        margin-right: 8px;
+        color: #333;
+    }
+
+    #view-switcher button,
+    #split-view-button /* Added */ {
+        padding: 6px 12px;
+        border: 1px solid #ccc;
+        background-color: #eee;
+        cursor: pointer;
+        border-radius: 4px;
+        font-size: 13px;
+        transition: background-color 0.2s ease;
+        font-weight: normal;
+    }
+     #view-switcher button.active {
+        background-color: #bbb;
+        border-color: #999;
+        color: #333;
+        font-weight: bold;
+     }
+     #view-switcher button:hover:not(.active),
+     #split-view-button:hover:not(.active) /* Added */ {
+         background-color: #ddd;
+     }
+
+     /* --- Split View Control Styles --- */
+     #split-view-controls {
+         position: relative; /* Context for popup */
+     }
+     #split-select-popup {
+        display: none;
+        position: absolute;
+        top: 105%; /* Position below the button */
+        left: 0;
+        background: white;
+        border: 1px solid #ccc;
+        padding: 15px;
+        z-index: 1003; /* Above controls */
+        box-shadow: 0 4px 8px rgba(0,0,0,0.2);
+        border-radius: 4px;
+        min-width: 280px;
+     }
+      #split-select-popup p {
+          margin-top: 0;
+          margin-bottom: 10px;
+          font-size: 13px;
+      }
+     #split-select-options label {
+        display: block;
+        margin-bottom: 6px;
+        font-size: 13px;
+        cursor: pointer;
+        padding: 3px;
+        border-radius: 3px;
+     }
+      #split-select-options label:hover {
+          background-color: #f0f0f0;
+      }
+     #split-select-options input[type="checkbox"] {
+        margin-right: 8px;
+        vertical-align: middle;
+     }
+      #split-select-options input[type="checkbox"]:disabled + span {
+          color: #999;
+          cursor: not-allowed;
+      }
+      #split-select-popup button {
+          padding: 6px 12px;
+          font-size: 12px;
+          margin-top: 15px;
+          margin-right: 5px;
+          cursor: pointer;
+          border-radius: 3px;
+          border: 1px solid #ccc;
+      }
+       #split-select-popup button#apply-split-button {
+           background-color: #5cb85c;
+           color: white;
+           border-color: #4cae4c;
+       }
+        #split-select-popup button#apply-split-button:disabled {
+            background-color: #a0a0a0;
+            border-color: #909090;
+            cursor: not-allowed;
+        }
+       #split-select-popup button#cancel-split-button {
+           background-color: #f0f0f0;
+       }
+       #split-select-popup button:hover:not(:disabled) {
+           opacity: 0.9;
+       }
+     /* --- End Split View Styles --- */
+
+    #filter-controls-socioeconomic,
+    #filter-controls-population {
+        display: none; /* Initially hidden */
+        flex-wrap: wrap;
+        gap: 15px;
+    }
+     #filter-controls-socioeconomic.active,
+     #filter-controls-population.active {
+        display: flex; /* Show when active */
+     }
+
+     #filter-controls-population label {
+         font-size: 13px;
+         margin-right: 10px;
+         cursor: pointer;
+         display: inline-flex;
+         align-items: center;
+     }
+     #filter-controls-population input[type="radio"] {
+         margin-right: 4px;
+     }
+      #filter-controls-population button {
+          padding: 4px 8px;
+          font-size: 12px;
+          margin-left: 5px;
+           border: 1px solid #ccc;
+            background-color: #eee;
+            cursor: pointer;
+            border-radius: 4px;
+             transition: background-color 0.2s ease;
+      }
+       #filter-controls-population button:hover {
+            background-color: #ddd;
+       }
+
+    #filter-controls-socioeconomic > button {
+        padding: 6px 12px;
+        border: 1px solid #ccc;
+        background-color: #f0f0f0;
+        cursor: pointer;
+        border-radius: 4px;
+        font-size: 13px;
+        font-weight: bold;
+        transition: background-color 0.2s ease;
+    }
+     #filter-controls-socioeconomic > button.active {
+        background-color: #ccc;
+        border-color: #a0a0a0;
+     }
+     #filter-controls-socioeconomic > button:hover:not(.active) {
+         background-color: #e0e0e0;
+     }
+
+    .filter-group {
+        display: flex;
+        align-items: center;
+        margin-right: 20px; /* Reduced margin */
+        gap: 8px;
+        flex-wrap: wrap;
+        border: 1px solid #ddd;
+        padding: 5px 8px;
+        border-radius: 4px;
+        background-color: #f8f8f8;
+    }
+    .filter-group strong {
+        margin-right: 5px;
+        color: #555;
+        font-size: 13px; /* Consistent size */
+    }
+    .filter-group button {
+        padding: 6px 10px;
+        border: 1px solid #ccc;
+        background-color: #eee;
+        cursor: pointer;
+        border-radius: 4px;
+        font-size: 13px;
+        transition: background-color 0.2s ease;
+        font-weight: normal;
+    }
+    .filter-group button:hover {
+        background-color: #ddd;
+    }
+     .filter-group button.active {
+         background-color: #d0d0d0;
+         border-color: #b0b0b0;
+         font-weight: bold;
+     }
+
+     #controls-area button#reset-filter-socioeconomic,
+     #controls-area button#reset-filter-population {
+        padding: 6px 12px;
+        font-size: 13px;
+        background-color: #f0f0f0;
+        border-color: #ddd;
+        font-weight: normal;
+     }
+     #controls-area button#reset-filter-socioeconomic:hover,
+     #controls-area button#reset-filter-population:hover {
+        background-color: #e0e0e0;
+     }
+
+    #socioeconomic-filters-2010,
+    #socioeconomic-filters-2014,
+    #socioeconomic-filters-2015 {
+        display: none; /* Initially hidden */
+        flex-wrap: wrap;
+        gap: 15px;
+    }
+
+    #socioeconomic-filters-2010.active,
+    #socioeconomic-filters-2014.active,
+    #socioeconomic-filters-2015.active {
+        display: flex; /* Show when active */
+    }
+
+    /* Container for the map and information panel */
+    #container {
+        display: flex;
+        width: 100%;
+        flex-grow: 1; /* Take remaining height */
+        overflow: hidden; /* Prevent inner content from overflowing container */
+    }
+
+    /* --- MODIFIED: Map Container Structure --- */
+    #map-container {
+        width: 75%; /* Takes the space formerly held by #map */
+        height: 100%;
+        position: relative; /* For absolute positioning of legends */
+    }
+
+    #map { /* Single map view */
+        height: 100%;
+        width: 100%;
+        position: relative; /* For original legend */
+    }
+
+    #map-split-wrapper { /* Container for split maps */
+        display: none; /* Hidden by default */
+        width: 100%;
+        height: 100%;
+        display: flex; /* Use flexbox for side-by-side */
+    }
+
+    #map-left, #map-right { /* Individual split maps */
+        width: 50%;
+        height: 100%;
+        position: relative; /* For split legends */
+    }
+    #map-right {
+        border-left: 2px solid #aaa; /* Separator line */
+    }
+    /* --- End Map Container Structure --- */
+
+    /* Styles for the information panel */
+    #info {
+        border-left: 1px solid #c0c0c0;
+        display: flex;
+        flex-direction: column;
+        height: 100%;
+        width: 25%;
+        background-color: #f8f8f8;
+        overflow-y: auto; /* Allow scrolling if content exceeds height */
+        padding: 15px;
+        box-sizing: border-box; /* Include padding in width */
+    }
+
+     #info h3 {
+         margin-top: 0;
+         margin-bottom: 15px;
+         font-size: 18px;
+         color: #333;
+         border-bottom: 1px solid #eee;
+         padding-bottom: 10px;
+     }
+      #info p {
+          font-size: 14px;
+          line-height: 1.6;
+          margin: 8px 0;
+          color: #555;
+      }
+      #info ul { /* Style for split view info */
+          padding-left: 20px;
+          margin-top: 5px;
+          font-size: 14px;
+      }
+       #info li {
+           margin-bottom: 5px;
+       }
+
+
+    #neighborhood-stats {
+        margin-top: 20px;
+        padding-top: 15px;
+        border-top: 1px solid #ccc;
+    }
+
+    #neighborhood-stats h4 {
+        margin-top: 0;
+        margin-bottom: 8px;
+        font-size: 16px;
+        color: #000;
+    }
+
+    #neighborhood-stats h5 {
+        margin-top: 15px;
+        margin-bottom: 8px;
+        font-size: 14px;
+        color: #333;
+        border-bottom: 1px dotted #ddd;
+        padding-bottom: 4px;
+    }
+
+    #neighborhood-stats p {
+        font-size: 13px;
+        line-height: 1.5;
+        margin: 6px 0;
+        color: #444;
+    }
+
+    #neighborhood-stats p b {
+         color: #222;
+    }
+
+    table { /* Keep original table styles */
+        font-family: Tahoma, sans-serif;
+        border-collapse: collapse;
+        width: 100%;
+        border-radius: 5px;
+        overflow: hidden;
+        box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
+        margin-bottom: 15px;
+        font-size: 13px;
+        margin-top: 10px;
+    }
+     table thead th {
+         background-color: #e9e9e9;
+         text-align: left;
+         padding: 8px 10px;
+         color: #333;
+     }
+    table tbody td {
+        border: 1px solid #dddddd;
+        text-align: left;
+        padding: 6px 10px;
+    }
+    table tbody tr:nth-child(even) { background-color: #f8f8f8; }
+     table tbody tr:hover { background-color: #e0e0e0; cursor: pointer; }
+
+    /* Styles for the map legend */
+    .legend { /* Base legend styles */
+        position: absolute;
+        background-color: rgba(255, 255, 255, 0.95);
+        padding: 10px; /* Slightly smaller padding */
+        border: 1px solid #b0b0b0;
+        border-radius: 5px; /* Slightly smaller radius */
+        font-size: 11px;
+        box-shadow: 0 1px 4px rgba(0, 0, 0, 0.2); /* Slightly reduced shadow */
+        z-index: 1000; /* Ensure legend is above map tiles */
+        max-height: 300px; /* Limit height */
+        overflow-y: auto;
+        line-height: 1.4; /* Adjust line height */
+    }
+     .legend h4 { margin: 0 0 6px 0; font-size: 13px; text-align: center; border-bottom: 1px solid #ddd; padding-bottom: 4px; color: #333;}
+    .legend-item { display: flex; align-items: center; margin-bottom: 3px; } /* Slightly tighter spacing */
+    .legend-color { width: 18px; height: 18px; margin-right: 6px; border: 1px solid #777; flex-shrink: 0; }
+     .legend p { margin: 5px 0; font-size: 10px; color: #666; }
+
+    /* Positioning for single map legend */
+     #map #legend {
+         bottom: 10px;
+         right: 10px;
+     }
+
+     /* Positioning and styling for split map legends */
+     .legend-split {
+          bottom: 5px; /* Lower */
+          max-height: 180px; /* More constrained height */
+          font-size: 10px; /* Smaller font */
+          padding: 8px;
+     }
+      .legend-split h4 { font-size: 12px; margin-bottom: 4px; padding-bottom: 3px; }
+      .legend-split .legend-item { margin-bottom: 2px; }
+      .legend-split .legend-color { width: 15px; height: 15px; margin-right: 5px; }
+
+     #legend-left { right: 5px; /* Inside map-left */ }
+     #legend-right { right: 5px; /* Inside map-right */ }
+
+     /* Styles to apply when split view is active */
+     body.split-active #view-switcher,
+     body.split-active #filter-controls-socioeconomic,
+     body.split-active #filter-controls-population {
+          opacity: 0.5; /* Dim controls */
+          pointer-events: none; /* Disable interaction */
+     }
+     body.split-active #split-view-button {
+          background-color: #d9534f; /* Reddish color for 'Exit' state */
+          border-color: #d43f3a;
+          color: white;
+     }
+     body.split-active #split-view-button:hover {
+         background-color: #c9302c;
+         border-color: #ac2925;
+     }
+
+</style>
+
+<body>
+    <div id="controls-area">
+        <div id="view-switcher">
+            <strong>View:</strong>
+            <button id="view-socioeconomic" class="active">Socioeconomic & Arrests</button>
+            <button id="view-population">Population Change</button>
+        </div>
+
+        <div id="split-view-controls">
+            <button id="split-view-button">Compare Data</button>
+            <div id="split-select-popup">
+                <p>Select <b>two</b> socioeconomic datasets to compare:</p>
+                <div id="split-select-options">
+                    </div>
+                <button id="apply-split-button" disabled>Apply Split</button>
+                <button id="cancel-split-button">Cancel</button>
+            </div>
+        </div>
+        <div id="filter-controls-socioeconomic" class="active">
+            <button id="select-year-2010" class="active">2010 Data</button>
+            <button id="select-year-2014">2014 Data</button>
+            <button id="select-year-2015">2015 Data</button>
+            <div id="socioeconomic-filters-2010" class="active">
+                 <div class="filter-group">
+                     <strong>Education:</strong>
+                     <button id="education-filter-2010">Less than HS (%)</button>
+                 </div>
+                 <div class="filter-group">
+                     <strong>Income:</strong>
+                     <button id="income-filter-2010">Median Income ($)</button> </div>
+                 <div class="filter-group">
+                     <strong>Poverty:</strong>
+                     <button id="poverty-filter-2010">Under Poverty (%)</button>
+                 </div>
+            </div>
+            <div id="socioeconomic-filters-2014">
+                 <div class="filter-group">
+                     <strong>Education:</strong>
+                     <button id="education-filter-2014">Less than HS (%)</button>
+                 </div>
+                 <div class="filter-group">
+                     <strong>Income:</strong>
+                     <button id="income-filter-2014">Aggregate Income ($)</button>
+                 </div>
+                 <div class="filter-group">
+                     <strong>Poverty:</strong>
+                     <button id="poverty-filter-2014">Under Poverty (%)</button>
+                 </div>
+            </div>
+            <div id="socioeconomic-filters-2015">
+                 <div class="filter-group">
+                     <strong>Education:</strong>
+                     <button id="education-filter-2015">Less than HS (%)</button>
+                 </div>
+                 <div class="filter-group">
+                     <strong>Income:</strong>
+                     <button id="income-filter-2015">Aggregate Income ($)</button>
+                 </div>
+                 <div class="filter-group">
+                     <strong>Poverty:</strong>
+                     <button id="poverty-filter-2015">Below $15k (%)</button> </div>
+            </div>
+            <button id="reset-filter-socioeconomic">Reset Colors</button>
+        </div>
+
+        <div id="filter-controls-population">
+            <strong>Show Change In:</strong>
+             <label><input type="radio" name="raceCategory" value="Change_2010_to_2020_Total_Population"> Total</label>
+            <label><input type="radio" name="raceCategory" value="Change_2010_to_2020_White_Alone_Population"> White</label>
+            <label><input type="radio" name="raceCategory" value="Change_2010_to_2020_Black_Alone_Population"> Black</label>
+            <label><input type="radio" name="raceCategory" value="Change_2010_to_2020_Asian_Alone_Population"> Asian</label>
+            <label><input type="radio" name="raceCategory" value="Change_2010_to_2020_Hispanic_or_Latino_Population"> Hispanic/Latino</label>
+            <label><input type="radio" name="raceCategory" value="Change_2010_to_2020_Population_two_or_more_races"> Two+ Races</label>
+            <button id="reset-filter-population">Reset Colors</button> </div>
+    </div> <div id="container">
+        <div id="map-container">
+             <div id="map"> <div id="legend" class="legend"><h4>Legend</h4></div>
+             </div>
+             <div id="map-split-wrapper"> <div id="map-left">
+                     <div id="legend-left" class="legend legend-split"><h4>Left Map Legend</h4></div>
+                 </div>
+                 <div id="map-right">
+                     <div id="legend-right" class="legend legend-split"><h4>Right Map Legend</h4></div>
+                 </div>
+             </div>
+        </div>
+        <div id="info">
+             <h3>Information Panel</h3>
+             <p>Hover over features on the map for details.</p>
+            <p>
+                <span style="font-weight: bold; color: #000;">&#9679;</span> Each black dot represents an arrest location from a sample dataset (2016), visualizing potential common arrest clusters.
+            </p>
+            <div id="neighborhood-stats">
+                 <p>Hover over a neighborhood polygon.</p> </div>
+            <div id="data-sources">
+                <h4>Data Sources</h4>
+                 <p><a href="https://catalog.data.gov/dataset/pittsburgh-american-community-survey-2015-miscellaneous-data" target="_blank"><strong>Pittsburgh American Community Survey 2015</strong></a></p>
+                 <p><a href="https://data.wprdc.org/dataset/pgh" target="_blank"><strong>SNAP Census Data 2010</strong></a></p>
+                 <p><a href="https://catalog.data.gov/dataset/pittsburgh-american-community-survey-2014-miscellaneous-data" target="_blank"><strong>Pittsburgh American Community Survey 2014</strong></a></p>
+                 <p><a href="https://spcgis-spc.hub.arcgis.com/datasets/city-of-pittsburgh-neighborhoods/explore" target="_blank"><strong>Neighborhood Boundary Data</strong></a></p>
+                 <p><a href="https://catalog.data.gov/dataset/pittsburgh-police-arrest-data" target="_blank"><strong>Pittsburgh Police Arrest Data 2016</strong></a></p>
+                 <p><a href="https://data.wprdc.org/dataset/2020-census-redistricting-data-extracts/resource/a8414ed5-c50f-417e-bb67-82b734660da6" target="_blank"><strong>Census Population data 2010-2020</strong></a></p>
+            </div>
+        </div> </div> <script>
+    // --- Variable Management ---
+    var map; // Single map instance
+    var neighborhoodLayer; // Single map layer
+    var arrestsLayer; // Single map arrest layer
+    var neighborhoodsWithEduInc = null; // Joined Socioeconomic Data
+    var neighborhoodsWithCensus = null; // Joined Population Data
+    var currentMapView = 'socioeconomic'; // 'socioeconomic' or 'population'
+    var currentMapStatistic = null; // Key of the currently displayed statistic (single view)
+    var currentSocioeconomicYear = '2010'; // '2010', '2014', '2015'
+    var lastHoveredFeature = null; // Track last feature for info panel updates
+
+    // --- Split View Variables ---
+    var mapLeft, mapRight; // Split map instances
+    var legendLeft, legendRight; // References to split legend divs
+    var isSplitViewActive = false; // Flag for split view mode
+    var splitStatLeft = null; // Statistic key for left map
+    var splitStatRight = null; // Statistic key for right map
+    var availableSplitOptions = {}; // Cache for { 'Stat Key': 'Display Name' }
+    var selectedSplitOptions = []; // Array holding the keys of selected checkboxes
+
+    // --- DOM Element References ---
+    const legend = document.getElementById('legend'); // Single view legend
+    const infoPanel = document.getElementById('info');
+    const neighborhoodStatsDiv = document.getElementById('neighborhood-stats');
+    const viewSocioeconomicBtn = document.getElementById('view-socioeconomic');
+    const viewPopulationBtn = document.getElementById('view-population');
+    const filtersSocioeconomic = document.getElementById('filter-controls-socioeconomic');
+    const filtersPopulation = document.getElementById('filter-controls-population');
+
+    // Year buttons
+    const selectYear2010Btn = document.getElementById('select-year-2010');
+    const selectYear2014Btn = document.getElementById('select-year-2014');
+    const selectYear2015Btn = document.getElementById('select-year-2015');
+
+    // Year filter divs
+    const socioeconomicFilters2010Div = document.getElementById('socioeconomic-filters-2010');
+    const socioeconomicFilters2014Div = document.getElementById('socioeconomic-filters-2014');
+    const socioeconomicFilters2015Div = document.getElementById('socioeconomic-filters-2015');
+
+    // Split View DOM References
+    const splitViewBtn = document.getElementById('split-view-button');
+    const splitSelectPopup = document.getElementById('split-select-popup');
+    const splitSelectOptionsDiv = document.getElementById('split-select-options');
+    const applySplitBtn = document.getElementById('apply-split-button');
+    const cancelSplitBtn = document.getElementById('cancel-split-button');
+    const mapContainer = document.getElementById('map-container');
+    const mapDiv = document.getElementById('map'); // Single map div
+    const mapSplitWrapper = document.getElementById('map-split-wrapper'); // Split map container
+    const mapLeftDiv = document.getElementById('map-left');
+    const mapRightDiv = document.getElementById('map-right');
+    legendLeft = document.getElementById('legend-left'); // Assign split legend elements
+    legendRight = document.getElementById('legend-right');
+
+    // --- Utility Functions ---
+    // Deep clone - AI help
+    function deepClone(obj) {
+        try { return JSON.parse(JSON.stringify(obj)); }
+        catch (e) { console.error("Deep clone failed:", e); return null; }
+    }
+
+    // Format statistic value for display (e.g., in tooltips) - NEW
+    function formatStatValue(rawValue, statistic) {
+        if (rawValue === null || rawValue === undefined || isNaN(rawValue)) return 'N/A';
+
+        let unit = '';
+        let formattedValue;
+        let note = '';
+
+        // Determine unit and formatting based on statistic key
+        if (statistic.includes('income') || statistic.includes('Income')) {
+            unit = '$';
+            formattedValue = rawValue.toLocaleString();
+            if (statistic.includes('Aggregate') || statistic === 'Income_2015') note = ' (Agg)'; // Note for aggregate income
+        } else if (statistic.includes('less_than_high_school') || statistic.includes('poverty') || statistic.includes('Poverty') || statistic.includes('Education') || statistic.includes('Percent')) {
+            unit = '%';
+            // Check if the value needs scaling (assuming original 2010 stats were 0-1)
+            if (statistic === 'less_than_high_school_2010' || statistic === 'percent_under_poverty_2010') {
+                formattedValue = (rawValue * 100).toFixed(1);
+            } else {
+                 // Assume other percentages are already 0-100
+                 formattedValue = parseFloat(rawValue).toFixed(1);
+            }
+        } else {
+            formattedValue = rawValue.toLocaleString(); // Default fallback
+        }
+
+        // Add +/- sign for population change if needed (handled in population specific functions)
+
+        return `${unit === '$' ? unit : ''}${formattedValue}${unit !== '$' ? unit : ''}${note}`;
+    }
+
+
+    // --- Data Joining ---
+    // Function to join socioeconomic data - AI help (mostly unchanged, ensure robustness)
+    function joinSocioeconomicData() {
+        if (typeof Neighborhoods === 'undefined' || !Neighborhoods) {
+            console.error("Neighborhoods base data is missing.");
+            return null;
+        }
+
+        let data = deepClone(Neighborhoods);
+        if (!data) return null;
+
+        data.features.forEach(feature => {
+            if (!feature.properties) feature.properties = {};
+            var hoodName = feature.properties.hood;
+            if (!hoodName) return; // Skip if neighborhood name is missing
+
+            // --- 2010 Data (eduincdata) ---
+            if (typeof eduincdata !== 'undefined' && eduincdata) {
+                var matchingStat2010 = eduincdata.find(stat => stat.neighborhood && stat.neighborhood.toLowerCase() === hoodName.toLowerCase());
+                if (matchingStat2010) {
+                    // Ensure values are numbers, default to null if not
+                    feature.properties.less_than_high_school_2010 = parseFloat(matchingStat2010.less_than_high_school) || null;
+                    feature.properties.median_income_2009 = parseInt(matchingStat2010.median_income_2009, 10) || null;
+                    feature.properties.percent_under_poverty_2010 = parseFloat(matchingStat2010.percent_under_poverty) || null;
+                } else {
+                     feature.properties.less_than_high_school_2010 = null;
+                     feature.properties.median_income_2009 = null;
+                     feature.properties.percent_under_poverty_2010 = null;
+                }
+            } else {
+                feature.properties.less_than_high_school_2010 = null;
+                feature.properties.median_income_2009 = null;
+                feature.properties.percent_under_poverty_2010 = null;
+            }
+
+            // --- 2014 Data ---
+            if (typeof Edu2014 !== 'undefined' && typeof Income2014 !== 'undefined' && typeof Poverty2014 !== 'undefined') {
+                var matchingEdu2014 = Edu2014.find(stat => stat.Neighborhood && stat.Neighborhood.toLowerCase() === hoodName.toLowerCase());
+                feature.properties.PercentTotalLowerthanHighSchoolDiploma_2014 = matchingEdu2014 ? (parseFloat(matchingEdu2014.PercentTotalLowerthanHighSchoolDiploma) || null) : null;
+
+                var matchingIncome2014 = Income2014.find(stat => stat.Neighborhood && stat.Neighborhood.toLowerCase() === hoodName.toLowerCase());
+                feature.properties.Aggregate12monthIncome2014 = matchingIncome2014 ? (parseInt(matchingIncome2014.Aggregate12monthIncome2014, 10) || null) : null;
+
+                var matchingPoverty2014 = Poverty2014.find(stat => stat.Neighborhood && stat.Neighborhood.toLowerCase() === hoodName.toLowerCase());
+                feature.properties.PercentBelowPoverty_2014 = matchingPoverty2014 ? (parseFloat(matchingPoverty2014.PercentBelowPoverty) || null) : null;
+            } else {
+                feature.properties.PercentTotalLowerthanHighSchoolDiploma_2014 = null;
+                feature.properties.Aggregate12monthIncome2014 = null;
+                feature.properties.PercentBelowPoverty_2014 = null;
+            }
+
+            // --- 2015 Data ---
+            if (typeof Edu2015 !== 'undefined' && typeof Income2015 !== 'undefined' && typeof Poverty2015 !== 'undefined') {
+                var matchingEdu2015 = Edu2015.find(stat => stat.Neighborhood && stat.Neighborhood.toLowerCase() === hoodName.toLowerCase());
+                 feature.properties.Education_2015 = matchingEdu2015 ? (parseFloat(matchingEdu2015.PercentTotalLowerthanHighSchoolDiploma) || null) : null;
+
+                 var matchingIncome2015 = Income2015.find(stat => stat.Neighborhood && stat.Neighborhood.toLowerCase() === hoodName.toLowerCase());
+                 // NOTE: The source data field seems to be 'Aggregate12monthIncome2014' in the Income2015.js file - VERIFY THIS IS CORRECT
+                 feature.properties.Income_2015 = matchingIncome2015 ? (parseInt(matchingIncome2015.Aggregate12monthIncome2014, 10) || null) : null;
+
+                 var matchingPoverty2015 = Poverty2015.find(stat => stat.Neighborhood && stat.Neighborhood.toLowerCase() === hoodName.toLowerCase());
+                 feature.properties.Poverty_2015 = matchingPoverty2015 ? (parseFloat(matchingPoverty2015.PercentLessthan15000) || null) : null;
+            } else {
+                 feature.properties.Education_2015 = null;
+                 feature.properties.Income_2015 = null;
+                 feature.properties.Poverty_2015 = null;
+            }
+        });
+        console.log("Socioeconomic data joined."); // Debug log
+        return data;
+    }
+
+    // Function to join Census change data (unchanged)
+    function joinCensusData() {
+        if (typeof Neighborhoods === 'undefined' || !Neighborhoods || typeof CensusChange === 'undefined' || !CensusChange) {
+            console.error("Neighborhoods or CensusChange data is missing.");
+            return null;
+        }
+        let data = deepClone(Neighborhoods);
+        if (!data) return null;
+         const changeColumns = [
+            "Change_2010_to_2020_Total_Population", "Change_2010_to_2020_White_Alone_Population",
+            "Change_2010_to_2020_Black_Alone_Population", "Change_2010_to_2020_Asian_Alone_Population",
+            "Change_2010_to_2020_Hispanic_or_Latino_Population", "Change_2010_to_2020_Population_two_or_more_races"
+         ];
+        data.features.forEach(feature => {
+             if (!feature.properties) feature.properties = {};
+             var hoodName = feature.properties.hood;
+             if (!hoodName) return; // Skip if no name
+
+             var matchingStat = CensusChange.find(stat => stat.Neighborhood && stat.Neighborhood.toLowerCase() === hoodName.toLowerCase());
+             if (matchingStat) {
+                 changeColumns.forEach(col => feature.properties[col] = matchingStat.hasOwnProperty(col) ? (parseInt(matchingStat[col], 10) || 0) : null); // Ensure numbers, default 0 if parse fails but present
+             } else {
+                 changeColumns.forEach(col => feature.properties[col] = null);
+             }
+        });
+        console.log("Census population data joined."); // Debug log
+        return data;
+    }
+
+    // --- Layer Management ---
+    // Removes layers from the MAIN map instance
+    function removeAllLayers() {
+        if (map) { // Only operate if the main map exists
+            if (neighborhoodLayer) {
+                map.removeLayer(neighborhoodLayer);
+                neighborhoodLayer = null;
+            }
+            if (arrestsLayer) {
+                map.removeLayer(arrestsLayer);
+                arrestsLayer = null;
+            }
+        }
+    }
+
+    // Adds layers to the MAIN map for Socioeconomic view
+    function addSocioeconomicLayers() {
+        if (isSplitViewActive) return; // Don't interfere with split view
+        removeAllLayers();
+        if (!map) return; // Need the map instance
+
+        // Ensure data is joined (lazy load)
+        if (!neighborhoodsWithEduInc) {
+            neighborhoodsWithEduInc = joinSocioeconomicData();
+        }
+        if (!neighborhoodsWithEduInc) {
+            console.error("Failed to load/join socioeconomic data for layers.");
+            return; // Exit if data is still unavailable
+        }
+
+        // Add neighborhood polygons
+        neighborhoodLayer = L.geoJson(neighborhoodsWithEduInc, {
+             style: getStyleSocioeconomicDefault, // Start with default style
+             onEachFeature: onEachFeatureSocioeconomic // Add interactions
+        }).addTo(map);
+
+        // Add arrest points
+        if (typeof arrests !== 'undefined' && arrests) {
+             arrestsLayer = L.geoJson(arrests, {
+                 pointToLayer: (feature, latlng) => L.circleMarker(latlng, { radius: 4, fillColor: "#000", color: "#000", weight: 0.5, opacity: 1, fillOpacity: 0.7 })
+             }).addTo(map);
+             if (map.hasLayer(arrestsLayer)) arrestsLayer.bringToFront(); // Ensure arrests are on top
+        }
+
+        // Add interaction listeners to the newly created layer
+        addLayerInteractionListeners(neighborhoodLayer);
+        resetSocioeconomicStyles(); // Apply default style and legend initially
+        console.log("Socioeconomic layers added to main map.");
+    }
+
+    // Adds layers to the MAIN map for Population view
+    function addPopulationLayers() {
+        if (isSplitViewActive) return; // Don't interfere with split view
+        removeAllLayers();
+         if (!map) return; // Need the map instance
+
+        // Ensure data is joined (lazy load)
+        if (!neighborhoodsWithCensus) {
+            neighborhoodsWithCensus = joinCensusData();
+        }
+         if (!neighborhoodsWithCensus) {
+             console.error("Failed to load/join census data for layers.");
+             return; // Exit if data is unavailable
+         }
+
+        // Add neighborhood polygons
+        neighborhoodLayer = L.geoJson(neighborhoodsWithCensus, {
+            style: getStylePopulationDefault, // Start with default style
+            onEachFeature: onEachFeaturePopulation // Add interactions
+        }).addTo(map);
+
+        // Add arrest points
+        if (typeof arrests !== 'undefined' && arrests) {
+             arrestsLayer = L.geoJson(arrests, {
+                 pointToLayer: (feature, latlng) => L.circleMarker(latlng, { radius: 4, fillColor: "#000", color: "#000", weight: 0.5, opacity: 1, fillOpacity: 0.7 })
+             }).addTo(map);
+             if (map.hasLayer(arrestsLayer)) arrestsLayer.bringToFront(); // Ensure arrests are on top
+        }
+
+        // Add interaction listeners to the newly created layer
+        addLayerInteractionListeners(neighborhoodLayer);
+        resetPopulationStyles(); // Apply default style and legend initially
+        console.log("Population layers added to main map.");
+    }
+
+    // --- View Switching Logic ---
+    // Switches between 'socioeconomic' and 'population' views on the MAIN map
+    function switchView(viewName) {
+        if (viewName === currentMapView && !isSplitViewActive) return; // No change needed unless exiting split view
+        if (isSplitViewActive) {
+            console.log("Exiting split view before switching main view.");
+            deactivateSplitView(); // Exit split view first
+            // Deactivate split view calls initializeMap, which resets everything,
+            // so we might need to re-apply the desired viewName *after* initialization.
+            // Let initializeMap handle the default setup. If viewName != default, call switchView again? Risky.
+            // Let's assume deactivateSplitView resets to the default (socioeconomic).
+             // If the target was population, we need to switch *after* reset.
+             // Modification: Let deactivate call initialize, then we check if we need to switch again.
+             if (viewName === 'population') {
+                 // Need a slight delay or better mechanism to ensure init is done.
+                 setTimeout(() => switchViewInternal(viewName), 50); // Try switching after a short delay
+             } else {
+                currentMapView = 'socioeconomic'; // Ensure state is correct after reset
+             }
+             return; // Exit after handling split view deactivation
+        }
+
+        switchViewInternal(viewName);
+    }
+
+    // Internal function to handle the actual view switching logic
+    function switchViewInternal(viewName) {
+         console.log(`Switching main view to: ${viewName}`);
+         currentMapView = viewName;
+         currentMapStatistic = null; // Reset statistic when switching views
+
+         // Update button active states
+         viewSocioeconomicBtn.classList.toggle('active', viewName === 'socioeconomic');
+         viewPopulationBtn.classList.toggle('active', viewName === 'population');
+
+         // Update filter control visibility
+         filtersSocioeconomic.classList.toggle('active', viewName === 'socioeconomic');
+         filtersPopulation.classList.toggle('active', viewName === 'population');
+
+         // Reset year selection/filters if switching to socioeconomic
+         if (viewName === 'socioeconomic') {
+             // Ensure year filters are reset to default (2010)
+             switchSocioeconomicYear('2010'); // Resets buttons and filters visibility
+             addSocioeconomicLayers(); // Add appropriate layers
+             infoPanel.querySelector('h3').textContent = "Socioeconomic & Arrest Information";
+         } else if (viewName === 'population') {
+             addPopulationLayers(); // Add appropriate layers
+             infoPanel.querySelector('h3').textContent = "Population Change Details";
+             // Reset population filters
+             filtersPopulation.querySelectorAll('input[type="radio"]').forEach(radio => radio.checked = false);
+             resetPopulationStyles(); // Reset colors and legend
+         }
+
+         // Clear neighborhood stats panel
+         neighborhoodStatsDiv.innerHTML = "<p>Hover over a neighborhood polygon.</p>";
+         lastHoveredFeature = null;
+    }
+
+
+    // Switches the displayed year within the Socioeconomic view
+    function switchSocioeconomicYear(year) {
+        if (year === currentSocioeconomicYear || currentMapView !== 'socioeconomic' || isSplitViewActive) return;
+
+        console.log(`Switching socioeconomic year to: ${year}`);
+        currentSocioeconomicYear = year;
+        currentMapStatistic = null; // Reset statistic when changing year
+
+        // Update year button active states
+        selectYear2010Btn.classList.toggle('active', year === '2010');
+        selectYear2014Btn.classList.toggle('active', year === '2014');
+        selectYear2015Btn.classList.toggle('active', year === '2015');
+
+        // Update visibility of year-specific filter groups
+        socioeconomicFilters2010Div.classList.toggle('active', year === '2010');
+        socioeconomicFilters2014Div.classList.toggle('active', year === '2014');
+        socioeconomicFilters2015Div.classList.toggle('active', year === '2015');
+
+        // Reset map styles and legend
+        resetSocioeconomicStyles();
+    }
+
+
+    // --- Style Defaults ---
+    function getStyleSocioeconomicDefault(feature) { return { fillColor: "#3388ff", weight: 1.5, opacity: 1, color: "white", fillOpacity: 0.4 }; }
+    function getStylePopulationDefault(feature) { return { fillColor: "#cccccc", weight: 1, opacity: 1, color: "white", fillOpacity: 0.6 }; }
+
+
+    // --- Map Interactions (Single View) ---
+
+    // Add listeners for hover/click to a specific layer - REFACTORED
+    function addLayerInteractionListeners(layer) {
+        if (!layer) return;
+        console.log("Adding interaction listeners to layer");
+
+        layer.off('mouseover mouseout'); // Remove previous listeners if any
+
+        layer.on('mouseover', function(e) {
+             if (isSplitViewActive) return; // No hover effects on main map during split view
+
+             lastHoveredFeature = e.target; // Track the feature's layer
+              if (currentMapView === 'socioeconomic') {
+                  highlightFeatureSocioeconomic(e); // Highlight and update info panel
+              } else if (currentMapView === 'population') {
+                  highlightFeaturePopulation(e); // Highlight and update info panel
+              }
+        });
+
+        layer.on('mouseout', function(e) {
+             if (isSplitViewActive) return;
+
+              // Check if the mouse is moving to another feature within the same layer group
+              // This prevents flickering when moving between adjacent polygons
+              const relatedTarget = e.originalEvent.relatedTarget;
+              if (relatedTarget && relatedTarget.closest && relatedTarget.closest('.leaflet-interactive')) {
+                   // If moving to another interactive map element, potentially skip reset
+                   // However, leaflet handles layers individually, so resetting is usually correct
+              }
+
+                if (currentMapView === 'socioeconomic') {
+                    resetHighlightSocioeconomic(e); // Reset style
+                } else if (currentMapView === 'population') {
+                    resetHighlightPopulation(e); // Reset style
+                }
+             // Update info panel only if no specific statistic is selected
+             // (Otherwise, resetHighlight should handle restoring the choropleth style)
+             if (!currentMapStatistic) {
+                  neighborhoodStatsDiv.innerHTML = "<p>Hover over a neighborhood polygon.</p>";
+             }
+             // Check if the feature we left is the last hovered one
+             if (lastHoveredFeature === e.target) {
+                 lastHoveredFeature = null;
+             }
+        });
+
+        // Add click listener? (Optional)
+        // layer.on('click', function(e) { ... });
+    }
+
+
+    // --- Socioeconomic View Interactions (Single Map) ---
+    function onEachFeatureSocioeconomic(feature, layer) {
+         // Tooltip shown on hover (always shows name)
+         if (feature.properties && feature.properties.hood) {
+             layer.bindTooltip(feature.properties.hood);
+         }
+         // Mouseover/mouseout listeners are now added via addLayerInteractionListeners
+    }
+
+    function highlightFeatureSocioeconomic(e) {
+        var layer = e.target;
+        // Store original style only if it hasn't been stored already (prevents overwriting choropleth style)
+        if (!layer.options.originalStyle) {
+            layer.options.originalStyle = {
+                 weight: layer.options.weight,
+                 color: layer.options.color,
+                 fillOpacity: layer.options.fillOpacity,
+                 fillColor: layer.options.fillColor // Store original fill color too
+            };
+        }
+        layer.setStyle({ weight: 3, color: '#ffff00', fillOpacity: 0.6 });
+        if (!L.Browser.ie && !L.Browser.opera && !L.Browser.edge) { layer.bringToFront(); }
+         if (map.hasLayer(arrestsLayer)) arrestsLayer.bringToFront(); // Keep arrests on top
+        addNeighborhoodInfoSocioeconomic(e); // Update info panel
+    }
+
+    function resetHighlightSocioeconomic(e) {
+        var layer = e.target;
+        // Restore the specific choropleth style if one is active, otherwise restore default/original
+        if (currentMapStatistic) {
+             const style = styleByStatisticSocioeconomic(layer.feature, currentMapStatistic);
+             layer.setStyle(style);
+             // Update info panel with the data for the hovered feature (even on mouseout if stat selected)
+             addNeighborhoodInfoSocioeconomic(e);
+        } else if (layer.options.originalStyle) {
+            layer.setStyle(layer.options.originalStyle);
+            delete layer.options.originalStyle; // Clean up stored style
+            // Clear info panel if no stat selected
+             neighborhoodStatsDiv.innerHTML = "<p>Hover over a neighborhood polygon.</p>";
+        } else {
+             // Fallback if originalStyle wasn't set (shouldn't happen often)
+             neighborhoodLayer.resetStyle(layer);
+              neighborhoodStatsDiv.innerHTML = "<p>Hover over a neighborhood polygon.</p>";
+        }
+    }
+
+     // --- Population View Interactions (Single Map) ---
+    function onEachFeaturePopulation(feature, layer) {
+         let tt = feature.properties?.hood || "Unknown";
+         const totalChange = feature.properties?.Change_2010_to_2020_Total_Population;
+         if (totalChange !== null && totalChange !== undefined && !isNaN(totalChange)) {
+             tt += `<br>Total &Delta;: ${totalChange >= 0 ? '+' : ''}${totalChange.toLocaleString()}`;
+         }
+         layer.bindTooltip(tt);
+         // Mouseover/mouseout listeners are now added via addLayerInteractionListeners
+    }
+
+     function highlightFeaturePopulation(e) {
+         var layer = e.target;
+         if (!layer.options.originalStyle) {
+             layer.options.originalStyle = {
+                 weight: layer.options.weight,
+                 color: layer.options.color,
+                 fillOpacity: layer.options.fillOpacity,
+                 fillColor: layer.options.fillColor
+             };
+         }
+        layer.setStyle({ weight: 3, color: '#ffff00', fillOpacity: 0.75 });
+         if (!L.Browser.ie && !L.Browser.opera && !L.Browser.edge) { layer.bringToFront(); }
+         if (map.hasLayer(arrestsLayer)) arrestsLayer.bringToFront(); // Keep arrests on top
+         addNeighborhoodInfoPopulation(e); // Update info panel
+     }
+
+     function resetHighlightPopulation(e) {
+         var layer = e.target;
+        if (currentMapStatistic) {
+             const style = styleByStatisticPopulation(layer.feature, currentMapStatistic);
+             layer.setStyle(style);
+             addNeighborhoodInfoPopulation(e); // Show info for the hovered feature
+        } else if (layer.options.originalStyle) {
+             layer.setStyle(layer.options.originalStyle);
+             delete layer.options.originalStyle;
+              neighborhoodStatsDiv.innerHTML = "<p>Hover over a neighborhood polygon.</p>";
+        } else {
+             neighborhoodLayer.resetStyle(layer);
+              neighborhoodStatsDiv.innerHTML = "<p>Hover over a neighborhood polygon.</p>";
+        }
+    }
+
+    // --- Info Panel Updates (Single View) ---
+     function addNeighborhoodInfoSocioeconomic(e) {
+        if (!neighborhoodStatsDiv || isSplitViewActive) return; // Don't update panel in split view
+        var props = e.target.feature.properties;
+        if (!props || !props.hood) {
+            neighborhoodStatsDiv.innerHTML = '<p>Data unavailable for this neighborhood.</p>';
+            return;
+        }
+
+        let content = `<h4>${props.hood}</h4>`;
+
+        // Always show available data for the current year, plus the selected statistic if any
+        content += `<h5>Data (${currentSocioeconomicYear})</h5>`;
+        let dataFoundForYear = false;
+
+        // Define keys based on year
+        let eduKey, incKey, povKey, incLabel, povLabel;
+        if (currentSocioeconomicYear === '2010') {
+            eduKey = 'less_than_high_school_2010'; eduLabel = '% < HS Edu';
+            incKey = 'median_income_2009'; incLabel = 'Median Income (2009)';
+            povKey = 'percent_under_poverty_2010'; povLabel = '% Under Poverty';
+        } else if (currentSocioeconomicYear === '2014') {
+            eduKey = 'PercentTotalLowerthanHighSchoolDiploma_2014'; eduLabel = '% < HS Edu';
+            incKey = 'Aggregate12monthIncome2014'; incLabel = 'Aggregate Income';
+            povKey = 'PercentBelowPoverty_2014'; povLabel = '% Under Poverty';
+        } else { // 2015
+            eduKey = 'Education_2015'; eduLabel = '% < HS Edu';
+            incKey = 'Income_2015'; incLabel = 'Aggregate Income';
+            povKey = 'Poverty_2015'; povLabel = '% Below $15k Poverty';
+        }
+
+        // Display all stats for the current year
+         const eduVal = formatStatValue(props[eduKey], eduKey);
+         const incVal = formatStatValue(props[incKey], incKey);
+         const povVal = formatStatValue(props[povKey], povKey);
+
+         if (eduVal !== 'N/A' || incVal !== 'N/A' || povVal !== 'N/A') {
+             dataFoundForYear = true;
+             content += `<p><b>${eduLabel}:</b> ${eduVal}</p>`;
+             content += `<p><b>${incLabel}:</b> ${incVal}</p>`;
+             content += `<p><b>${povLabel}:</b> ${povVal}</p>`;
+         }
+
+        if (!dataFoundForYear) {
+             content += "<p>No data available for this year.</p>";
+        }
+
+        // Add specifically selected statistic if different from the year's defaults
+        if (currentMapStatistic && currentMapStatistic !== eduKey && currentMapStatistic !== incKey && currentMapStatistic !== povKey) {
+             let statName = availableSplitOptions[currentMapStatistic] || "Selected Statistic"; // Use lookup if available
+             let statValue = formatStatValue(props[currentMapStatistic], currentMapStatistic);
+             content += `<h5>Selected Statistic</h5><p><b>${statName}:</b> ${statValue}</p>`;
+        } else if (!currentMapStatistic) {
+             content += "<p><i>Select a data filter to color the map.</i></p>";
+        }
+
+
+        neighborhoodStatsDiv.innerHTML = content;
+    }
+
+     function addNeighborhoodInfoPopulation(e) {
+         if (!neighborhoodStatsDiv || isSplitViewActive) return; // Don't update panel in split view
+         var props = e.target.feature.properties;
+         if (!props || !props.hood) {
+            neighborhoodStatsDiv.innerHTML = '<p>Data unavailable for this neighborhood.</p>';
+            return;
+         }
+
+         let content = `<h4>${props.hood}</h4><h5>Population Change (2010-2020)</h5>`;
+
+         // Helper to format population change values
+         const formatPopChange = (value) => {
+             if (value === null || value === undefined || isNaN(value)) return 'N/A';
+             const num = Number(value);
+             return `${num >= 0 ? '+' : ''}${num.toLocaleString()}`;
+         };
+
+         // Display total change first
+         content += `<p><b>Total Change:</b> ${formatPopChange(props['Change_2010_to_2020_Total_Population'])}</p>`;
+
+         // Display the selected statistic change if one is selected
+         if (currentMapStatistic) {
+             let statName = formatStatNamePopulation(currentMapStatistic);
+             let statValue = formatPopChange(props[currentMapStatistic]);
+             // Highlight the selected stat if it's not the total
+             if (currentMapStatistic !== 'Change_2010_to_2020_Total_Population') {
+                 content += `<p style="background-color: #eee; padding: 2px 5px;"><b>${statName}:</b> ${statValue}</p>`;
+             }
+         } else {
+              content += "<p><i>Select a population group to color the map.</i></p>";
+         }
+
+         // Optionally list all available changes (can make panel long)
+         /*
+         content += `<h6>Detailed Changes:</h6>`;
+         const changeColumns = [
+             "Change_2010_to_2020_White_Alone_Population", "Change_2010_to_2020_Black_Alone_Population",
+             "Change_2010_to_2020_Asian_Alone_Population", "Change_2010_to_2020_Hispanic_or_Latino_Population",
+             "Change_2010_to_2020_Population_two_or_more_races"
+         ];
+         changeColumns.forEach(col => {
+             if (props.hasOwnProperty(col)) {
+                 content += `<p><b>${formatStatNamePopulation(col)}:</b> ${formatPopChange(props[col])}</p>`;
+             }
+         });
+         */
+
+         neighborhoodStatsDiv.innerHTML = content;
+     }
+
+    // --- Choropleth Logic (Socioeconomic - Single View) ---
+
+        // Get color based on value and statistic key
+        function getColorSocioeconomic(value, statistic) {
+            const missing = '#f0f0f0'; // Color for missing/invalid data
+            if (value === null || value === undefined || isNaN(value)) return missing;
+
+            let val = parseFloat(value); // Ensure numeric comparison
+
+            // --- Education (Less than HS %) ---
+            if (statistic === 'less_than_high_school_2010' || statistic === 'PercentTotalLowerthanHighSchoolDiploma_2014' || statistic === 'Education_2015') {
+                let breaks = (statistic === 'less_than_high_school_2010') ? [0.30, 0.20, 0.15, 0.10, 0.05] : [30, 20, 15, 10, 5]; // 2010 uses 0-1 scale
+                let compareVal = (statistic === 'less_than_high_school_2010') ? val : val;
+                let colors = ['#a50f15','#de2d26','#fb6a4a','#fc9272','#fcbba1','#fee5d9']; // Red sequence (high is worse)
+                for(let i=0; i<breaks.length; i++){ if(compareVal >= breaks[i]) return colors[i]; }
+                return colors[colors.length - 1]; // Lowest category
+            }
+            // --- Income ---
+            else if (statistic === 'median_income_2009') { // Median Income
+                let breaks = [60000, 50000, 40000, 30000, 20000];
+                let colors = ['#005a32','#238b45','#41ab5d','#74c476','#a1d99b','#d9f0a3']; // Green sequence (high is better)
+                for(let i=0; i<breaks.length; i++){ if(val >= breaks[i]) return colors[i]; }
+                return colors[colors.length - 1];
+            } else if (statistic === 'Aggregate12monthIncome2014') { // Aggregate Income 2014
+                 let breaks = [500000000, 200000000, 100000000, 50000000, 10000000];
+                 let colors = ['#00441b', '#006d2c', '#238b45', '#41ab5d', '#74c476', '#a1d99b']; // Darker Green sequence
+                 for(let i=0; i<breaks.length; i++){ if(val >= breaks[i]) return colors[i]; }
+                 return colors[colors.length - 1];
+            } else if (statistic === 'Income_2015') { // Aggregate Income 2015
+                 let breaks = [600000000, 300000000, 150000000, 75000000, 25000000];
+                 let colors = ['#084594','#2171b5','#4292c6','#6baed6','#9ecae1','#c6dbef']; // Blue sequence
+                 for(let i=0; i<breaks.length; i++){ if(val >= breaks[i]) return colors[i]; }
+                 return colors[colors.length-1];
+            }
+            // --- Poverty ---
+            else if (statistic === 'percent_under_poverty_2010' || statistic === 'PercentBelowPoverty_2014' || statistic === 'Poverty_2015') {
+                 let breaks = (statistic === 'percent_under_poverty_2010') ? [0.35, 0.25, 0.20, 0.15, 0.10] : [35, 25, 20, 15, 10]; // 2010 uses 0-1 scale
+                 let compareVal = (statistic === 'percent_under_poverty_2010') ? val : val;
+                 let colors = ['#67000d','#a50f15','#de2d26','#fb6a4a','#fc9272','#fcbba1']; // Oranges/Reds (high is worse)
+                 for(let i=0; i<breaks.length; i++){ if(compareVal >= breaks[i]) return colors[i]; }
+                 return colors[colors.length - 1];
+            }
+
+            return missing; // Fallback if statistic not matched
+        }
+
+    // Generate style object for a feature based on statistic
+    function styleByStatisticSocioeconomic(feature, statistic) {
+        const value = feature.properties?.[statistic];
+        return {
+            fillColor: getColorSocioeconomic(value, statistic),
+            weight: 1, // Thinner weight for choropleth
+            opacity: 1,
+            color: 'white', // White borders look clean
+            fillOpacity: 0.8 // Slightly higher opacity for choropleth
+        };
+    }
+
+    // Update the MAIN legend based on the selected socioeconomic statistic
+    function updateLegendSocioeconomic(statistic) {
+        if (!legend || isSplitViewActive) return; // Don't update main legend in split view
+
+        const missing = '#f0f0f0';
+        legend.innerHTML = ''; // Clear previous content
+        legend.dataset.currentStat = statistic || '';
+        let title = "Neighborhood Legend";
+        let items = [];
+        let note = ""; // For footnotes like Aggregate Income
+
+        if (!statistic) {
+            legend.innerHTML = `<h4>${title}</h4><p>Select a data filter above.</p>`;
+            return;
+        }
+
+        // Define legend items based on the statistic (matching getColor function)
+        if (statistic === 'less_than_high_school_2010' || statistic === 'PercentTotalLowerthanHighSchoolDiploma_2014' || statistic === 'Education_2015') {
+            title = (statistic === 'less_than_high_school_2010') ? "% < HS Edu (2010)" : (statistic === 'PercentTotalLowerthanHighSchoolDiploma_2014' ? "% < HS Edu (2014)" : "% < HS Edu (2015)");
+             items=[{c:'#a50f15',l:'>30%'},{c:'#de2d26',l:'20-30%'},{c:'#fb6a4a',l:'15-20%'},{c:'#fc9272',l:'10-15%'},{c:'#fcbba1',l:'5-10%'},{c:'#fee5d9',l:'0-5%'}];
+        } else if (statistic === 'median_income_2009') {
+            title = "Median Income (2009 $)";
+             items=[{c:'#005a32',l:'> $60k'},{c:'#238b45',l:'$50-60k'},{c:'#41ab5d',l:'$40-50k'},{c:'#74c476',l:'$30-40k'},{c:'#a1d99b',l:'$20-30k'},{c:'#d9f0a3',l:'< $20k'}];
+        } else if (statistic === 'Aggregate12monthIncome2014') {
+             title = "Aggregate Income (2014 $)"; note = "Note: Aggregate, not Median.";
+             items = [{ c: '#00441b', l: '> $500M' }, { c: '#006d2c', l: '$200-500M' }, { c: '#238b45', l: '$100-200M' }, { c: '#41ab5d', l: '$50-100M' }, { c: '#74c476', l: '$10-50M' }, { c: '#a1d99b', l: '< $10M' }];
+        } else if (statistic === 'Income_2015') {
+             title = "Aggregate Income (2015 $)"; note = "Note: Aggregate, not Median.";
+             items = [{ c: '#084594', l: '> $600M' }, { c: '#2171b5', l: '$300-600M' }, { c: '#4292c6', l: '$150-300M' }, { c: '#6baed6', l: '$75-150M' }, { c: '#9ecae1', l: '$25-75M' }, { c: '#c6dbef', l: '< $25M' }];
+        } else if (statistic === 'percent_under_poverty_2010' || statistic === 'PercentBelowPoverty_2014' || statistic === 'Poverty_2015') {
+             title = (statistic === 'percent_under_poverty_2010') ? "% Under Poverty (2010)" : (statistic === 'PercentBelowPoverty_2014' ? "% Under Poverty (2014)" : "% Below $15k (2015)");
+             items=[{c:'#67000d',l:'>35%'},{c:'#a50f15',l:'25-35%'},{c:'#de2d26',l:'20-25%'},{c:'#fb6a4a',l:'15-20%'},{c:'#fc9272',l:'10-15%'},{c:'#fcbba1',l:'0-10%'}];
+        } else {
+             // Fallback if statistic definition is missing
+             legend.innerHTML = `<h4>Legend</h4><p>Legend not defined for ${statistic}.</p>`;
+             return;
+        }
+
+        // Build legend HTML
+        legend.innerHTML = `<h4>${title}</h4>`;
+        if (note) legend.innerHTML += `<p style="font-size: 9px; margin-bottom: 4px; text-align: center;"><i>${note}</i></p>`;
+        items.forEach(i => legend.innerHTML += `<div class="legend-item"><div class="legend-color" style="background-color:${i.c}"></div><span>${i.l}</span></div>`);
+        legend.innerHTML += `<div class="legend-item"><div class="legend-color" style="background-color:${missing}"></div><span>N/A</span></div>`;
+    }
+
+    // Apply choropleth styling to the MAIN map based on selected socioeconomic statistic
+    function applyChoroplethSocioeconomic(statistic, button) {
+        if (!neighborhoodLayer || currentMapView !== 'socioeconomic' || isSplitViewActive) return;
+        console.log(`Applying socioeconomic choropleth: ${statistic}`);
+
+         // Update active state for filter buttons within the current year's group
+         const currentFilterGroup = document.getElementById(`socioeconomic-filters-${currentSocioeconomicYear}`);
+         if (currentFilterGroup) {
+            currentFilterGroup.querySelectorAll('.filter-group button').forEach(btn => btn.classList.remove('active'));
+            if (button) {
+                 button.classList.add('active');
+            }
+         }
+
+        // Check if the selected property exists in the data
+        const hasProp = neighborhoodsWithEduInc?.features.some(f => f.properties?.hasOwnProperty(statistic));
+
+        if (hasProp) {
+            currentMapStatistic = statistic; // Set the global statistic key
+            neighborhoodLayer.setStyle(feature => styleByStatisticSocioeconomic(feature, statistic));
+            updateLegendSocioeconomic(statistic); // Update the main legend
+        } else {
+             console.warn(`Data property missing for statistic: ${statistic}`);
+             resetSocioeconomicStyles(); // Reset to default if data is missing
+             if(legend) {
+                 updateLegendSocioeconomic(null); // Clear legend
+                 legend.innerHTML+='<p style="color:red; font-size:10px; text-align:center;">Data unavailable for this filter.</p>';
+             }
+        }
+         // Update info panel based on the last hovered feature, if any
+         if (lastHoveredFeature) {
+             addNeighborhoodInfoSocioeconomic({ target: lastHoveredFeature });
+         } else {
+              neighborhoodStatsDiv.innerHTML = "<p>Hover over a neighborhood polygon.</p>";
+         }
+    }
+
+    // Reset MAIN map socioeconomic styles to default
+    function resetSocioeconomicStyles() {
+        if (isSplitViewActive) return; // Don't affect main map if split view is active
+        console.log("Resetting socioeconomic styles");
+        currentMapStatistic = null; // Clear selected statistic
+
+        // Deactivate all filter buttons
+        filtersSocioeconomic.querySelectorAll('.filter-group button').forEach(btn => btn.classList.remove('active'));
+
+        if (neighborhoodLayer && currentMapView === 'socioeconomic' && map && map.hasLayer(neighborhoodLayer)) {
+            neighborhoodLayer.setStyle(getStyleSocioeconomicDefault); // Apply default style
+            updateLegendSocioeconomic(null); // Reset legend
+        }
+        // Clear info panel
+        neighborhoodStatsDiv.innerHTML = "<p>Hover over a neighborhood polygon.</p>";
+        lastHoveredFeature = null;
+    }
+
+    // --- Choropleth Logic (Population - Single View) ---
+     function formatStatNamePopulation(key) {
+         if (!key) return "Unknown Statistic";
+         // Improved formatting
+         return key
+            .replace('Change_2010_to_2020_','&Delta; ') // Use delta symbol
+            .replace(/_/g,' ')
+            .replace(' Population', '') // Remove redundant 'Population'
+            .replace(' Alone', '') // Remove 'Alone'
+            .replace(' or Latino', '/Latino') // Shorter Hispanic
+            .replace('two or more races', 'Two+ Races'); // Shorter multi-race
+     }
+
+     // Get color for population change value
+     function getColorPopulation(value) {
+        const missing = '#f0f0f0';
+        const zeroColor = '#ffffff'; // Use white for zero change for better contrast maybe? Or light gray: '#f0f0f0'
+        if (value === null || value === undefined || isNaN(value)) return missing;
+
+        let val = Number(value);
+
+        // Diverging color scheme: Green for increase, Brown/Orange for decrease
+        if (val > 1000) return '#1a9850'; // Strong Green
+        if (val > 500) return '#66bd63';
+        if (val > 100) return '#a6d96a';
+        if (val > 0) return '#d9ef8b';  // Lightest Green
+        if (val === 0) return zeroColor; // Zero
+        if (val < -1000) return '#b2182b'; // Strong Red/Brown
+        if (val < -500) return '#d6604d';
+        if (val < -100) return '#f4a582';
+        if (val < 0) return '#fddbc7'; // Lightest Red/Brown
+
+        return missing; // Should not be reached if value is a number
+    }
+
+    // Apply population choropleth style
+     function styleByStatisticPopulation(feature, statistic) {
+         const value = feature.properties?.[statistic];
+         return {
+            fillColor: getColorPopulation(value),
+            weight: 1,
+            opacity: 1,
+            color: 'white',
+            fillOpacity: 0.8
+        };
+     }
+
+     // Update MAIN legend for population change
+     function updateLegendPopulation(statistic) {
+        if (!legend || isSplitViewActive) return; // Don't update main legend in split view
+        const missing = '#f0f0f0';
+        const zeroColor = '#ffffff'; // Match getColorPopulation
+        legend.innerHTML = ''; // Clear previous content
+        legend.dataset.currentStat = statistic || '';
+
+        let title = statistic ? `${formatStatNamePopulation(statistic)} (2010-2020)` : "Population Change Legend";
+
+        if (!statistic) {
+             legend.innerHTML = `<h4>${title}</h4><p>Select a group above.</p>`;
+             return;
+        }
+
+        // Legend items matching getColorPopulation breaks
+        let items = [
+            { c: '#1a9850', l: '> +1000' },
+            { c: '#66bd63', l: '+501 to +1000' },
+            { c: '#a6d96a', l: '+101 to +500' },
+            { c: '#d9ef8b', l: '+1 to +100' },
+            { c: zeroColor, l: '0' },
+            { c: '#fddbc7', l: '-1 to -100' },
+            { c: '#f4a582', l: '-101 to -500' },
+            { c: '#d6604d', l: '-501 to -1000' },
+            { c: '#b2182b', l: '< -1000' },
+        ];
+
+        legend.innerHTML = `<h4>${title}</h4>`;
+        items.forEach(i => legend.innerHTML += `<div class="legend-item"><div class="legend-color" style="background-color:${i.c}; border: ${i.c === '#ffffff' ? '1px solid #ccc' : '1px solid #777'};"></div><span>${i.l}</span></div>`); // Add border to white swatch
+        legend.innerHTML += `<div class="legend-item"><div class="legend-color" style="background-color:${missing}"></div><span>N/A</span></div>`;
+     }
+
+    // Apply population choropleth to MAIN map
+    function applyChoroplethPopulation(statistic) {
+        if (!neighborhoodLayer || currentMapView !== 'population' || isSplitViewActive) return;
+        console.log(`Applying population choropleth: ${statistic}`);
+
+         // Check if data exists
+         const hasProp = neighborhoodsWithCensus?.features.some(f => f.properties?.hasOwnProperty(statistic));
+
+        if (hasProp) {
+            currentMapStatistic = statistic; // Set global statistic
+            neighborhoodLayer.setStyle(feature => styleByStatisticPopulation(feature, statistic));
+            updateLegendPopulation(statistic); // Update legend
+        } else {
+             console.warn(`Data property missing for statistic: ${statistic}`);
+             resetPopulationStyles(); // Reset if data missing
+             if(legend) {
+                 updateLegendPopulation(null);
+                 legend.innerHTML+='<p style="color:red; font-size:10px; text-align:center;">Data unavailable for this group.</p>';
+             }
+        }
+         // Update info panel based on last hovered feature
+         if (lastHoveredFeature) {
+             addNeighborhoodInfoPopulation({ target: lastHoveredFeature });
+         } else {
+              neighborhoodStatsDiv.innerHTML = "<p>Hover over a neighborhood polygon.</p>";
+         }
+    }
+
+     // Reset MAIN map population styles to default
+     function resetPopulationStyles() {
+        if (isSplitViewActive) return;
+        console.log("Resetting population styles");
+        currentMapStatistic = null; // Clear selected statistic
+
+        // Uncheck all radio buttons
+        filtersPopulation.querySelectorAll('input[type="radio"]').forEach(radio => radio.checked = false);
+
+        if (neighborhoodLayer && currentMapView === 'population' && map && map.hasLayer(neighborhoodLayer)) {
+            neighborhoodLayer.setStyle(getStylePopulationDefault); // Apply default style
+            updateLegendPopulation(null); // Reset legend
+        }
+        // Clear info panel
+        neighborhoodStatsDiv.innerHTML = "<p>Hover over a neighborhood polygon.</p>";
+        lastHoveredFeature = null;
+     }
+
+
+    // --- Split View Logic ---
+
+    // Populate the checkbox options for split view selection
+    function populateSplitOptions() {
+        // Define the available options (key: display name)
+        // Using the simpler labels from the buttons where possible
+        availableSplitOptions = {
+            'less_than_high_school_2010': '% < HS (2010)',
+            'median_income_2009': 'Median Income $ (2009)',
+            'percent_under_poverty_2010': '% Poverty (2010)',
+            'PercentTotalLowerthanHighSchoolDiploma_2014': '% < HS (2014)',
+            'Aggregate12monthIncome2014': 'Aggregate Income $ (2014)',
+            'PercentBelowPoverty_2014': '% Poverty (2014)',
+            'Education_2015': '% < HS (2015)',
+            'Income_2015': 'Aggregate Income $ (2015)',
+            'Poverty_2015': '% Below $15k (2015)'
+        };
+
+        splitSelectOptionsDiv.innerHTML = ''; // Clear previous options
+        for (const key in availableSplitOptions) {
+            const label = document.createElement('label');
+            const checkbox = document.createElement('input');
+            checkbox.type = 'checkbox';
+            checkbox.value = key;
+            checkbox.id = 'split-check-' + key;
+            // Restore checked state if reopening popup after selection but before applying
+            checkbox.checked = selectedSplitOptions.includes(key);
+            checkbox.addEventListener('change', handleSplitCheckboxChange);
+
+            const span = document.createElement('span'); // Wrap text in span for styling disabled state
+            span.appendChild(document.createTextNode(' ' + availableSplitOptions[key]));
+
+            label.appendChild(checkbox);
+            label.appendChild(span);
+            splitSelectOptionsDiv.appendChild(label);
+        }
+        // Initial state update for checkboxes and Apply button
+        handleSplitCheckboxChange(); // Call once to set initial disabled/enabled states
+    }
+
+    // Handle changes to the split view selection checkboxes
+    function handleSplitCheckboxChange() {
+        // Update selectedSplitOptions array based on current checkbox states
+        selectedSplitOptions = [];
+        const checkboxes = splitSelectOptionsDiv.querySelectorAll('input[type="checkbox"]');
+        checkboxes.forEach(cb => {
+            if (cb.checked) {
+                selectedSplitOptions.push(cb.value);
+            }
+        });
+
+        // Enable/disable checkboxes: allow only 2 selections
+        let disableOthers = selectedSplitOptions.length >= 2;
+        checkboxes.forEach(cb => {
+            // A checkbox should be enabled if it's already selected OR if less than 2 are selected
+            cb.disabled = disableOthers && !cb.checked;
+            // Style the label text if disabled
+             const textSpan = cb.nextElementSibling; // Assuming span follows checkbox
+              if (textSpan) {
+                  textSpan.style.color = cb.disabled ? '#999' : '';
+                  textSpan.style.cursor = cb.disabled ? 'not-allowed' : '';
+                  cb.parentElement.style.cursor = cb.disabled ? 'not-allowed' : 'pointer'; // Set cursor on label
+              }
+        });
+
+        // Enable Apply button only when exactly 2 are selected
+        applySplitBtn.disabled = (selectedSplitOptions.length !== 2);
+    }
+
+    // Activate the split map view
+    function activateSplitView() {
+        if (isSplitViewActive || selectedSplitOptions.length !== 2) return;
+        console.log(`Activating split view with: ${selectedSplitOptions[0]} vs ${selectedSplitOptions[1]}`);
+        isSplitViewActive = true;
+        splitStatLeft = selectedSplitOptions[0];
+        splitStatRight = selectedSplitOptions[1];
+        document.body.classList.add('split-active'); // Apply CSS class to body
+
+        // Ensure main map layers are removed cleanly if they exist
+        if (map) {
+             if (neighborhoodLayer) map.removeLayer(neighborhoodLayer);
+             if (arrestsLayer) map.removeLayer(arrestsLayer);
+             neighborhoodLayer = null;
+             arrestsLayer = null;
+        }
+
+        // Hide single map container, show split container
+        mapDiv.style.display = 'none';
+        mapSplitWrapper.style.display = 'flex';
+
+        // --- Initialize Left Map ---
+        if (mapLeft) mapLeft.remove(); // Remove previous instance if exists
+        mapLeft = L.map('map-left').setView([40.4406, -79.9959], 12);
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19, attribution: '© OSM' }).addTo(mapLeft); // Shorter attrib
+        if (neighborhoodsWithEduInc) {
+            L.geoJson(neighborhoodsWithEduInc, {
+                 style: feature => styleByStatisticSocioeconomic(feature, splitStatLeft),
+                 // Add tooltip showing neighborhood name and the specific stat value
+                 onEachFeature: (f, l) => {
+                     if (f.properties?.hood) {
+                         const statName = availableSplitOptions[splitStatLeft] || splitStatLeft;
+                         const statValue = formatStatValue(f.properties[splitStatLeft], splitStatLeft);
+                         l.bindTooltip(`${f.properties.hood}<br><b>${statName}:</b> ${statValue}`);
+                     }
+                 }
+            }).addTo(mapLeft);
+        }
+        updateLegendSplit(legendLeft, splitStatLeft); // Update left legend
+
+        // --- Initialize Right Map ---
+        if (mapRight) mapRight.remove(); // Remove previous instance if exists
+        mapRight = L.map('map-right').setView([40.4406, -79.9959], 12);
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19, attribution: '© OSM' }).addTo(mapRight);
+        if (neighborhoodsWithEduInc) {
+            L.geoJson(neighborhoodsWithEduInc, {
+                 style: feature => styleByStatisticSocioeconomic(feature, splitStatRight),
+                 // Add tooltip showing neighborhood name and the specific stat value
+                  onEachFeature: (f, l) => {
+                     if (f.properties?.hood) {
+                         const statName = availableSplitOptions[splitStatRight] || splitStatRight;
+                         const statValue = formatStatValue(f.properties[splitStatRight], splitStatRight);
+                         l.bindTooltip(`${f.properties.hood}<br><b>${statName}:</b> ${statValue}`);
+                     }
+                 }
+            }).addTo(mapRight);
+        }
+        updateLegendSplit(legendRight, splitStatRight); // Update right legend
+
+         // --- Synchronize maps ---
+         try {
+            mapLeft.sync(mapRight);
+            mapRight.sync(mapLeft);
+            console.log("Split maps synchronized.");
+         } catch (e) {
+             console.error("Leaflet.Sync failed. Ensure the plugin is included correctly.", e);
+         }
+
+
+        // Update UI elements
+        splitViewBtn.textContent = 'Exit Split View';
+        splitViewBtn.classList.add('active'); // Optional: style the active split button differently if needed
+        splitSelectPopup.style.display = 'none'; // Hide selection popup
+
+        // Update Info Panel for split view
+        infoPanel.querySelector('h3').textContent = 'Split View Comparison';
+        neighborhoodStatsDiv.innerHTML = `
+             <p>Comparing:</p>
+             <ul>
+                 <li><b>Left Map:</b> ${availableSplitOptions[splitStatLeft] || splitStatLeft}</li>
+                 <li><b>Right Map:</b> ${availableSplitOptions[splitStatRight] || splitStatRight}</li>
+             </ul>
+             <p><i>Map views are synchronized. Hover over neighborhoods on either map for tooltips.</i></p>`;
+    }
+
+    // Deactivate the split map view and return to single view
+    function deactivateSplitView() {
+        if (!isSplitViewActive) return;
+        console.log("Deactivating split view.");
+        isSplitViewActive = false;
+        document.body.classList.remove('split-active');
+
+        // Unsync maps before removing
+         try {
+             if (mapLeft && mapRight) {
+                mapLeft.unsync(mapRight);
+                mapRight.unsync(mapLeft);
+             }
+         } catch(e) { console.warn("Map unsync failed.", e); }
+
+
+        // Remove split map instances
+        if (mapLeft) mapLeft.remove();
+        if (mapRight) mapRight.remove();
+        mapLeft = null;
+        mapRight = null;
+
+        // Hide split wrapper, show single map div
+        mapSplitWrapper.style.display = 'none';
+        mapDiv.style.display = 'block';
+
+        // Reset split view variables
+        splitStatLeft = null;
+        splitStatRight = null;
+        selectedSplitOptions = []; // Clear selections
+
+        // Update UI
+        splitViewBtn.textContent = 'Compare Data';
+        splitViewBtn.classList.remove('active');
+
+        // Re-initialize the main map to restore state cleanly
+        // This will set the view back to the default (socioeconomic, 2010)
+        initializeMap();
+    }
+
+    // Update the legends for the split view maps - NEW
+    function updateLegendSplit(legendElement, statistic) {
+        // This function is very similar to updateLegendSocioeconomic
+        // but targets a specific legend element (legendLeft or legendRight)
+        // Uses the same color/break logic from getColorSocioeconomic
+        if (!legendElement) return;
+        const missing = '#f0f0f0';
+        legendElement.innerHTML = ''; // Clear existing content
+        legendElement.dataset.currentStat = statistic || '';
+        let title = "Legend";
+        let items = [];
+        let note = "";
+
+        if (!statistic) {
+            legendElement.innerHTML = `<h4>${title}</h4><p>No data.</p>`;
+            return;
+        }
+
+        // Replicate legend definitions from updateLegendSocioeconomic, using shorter titles/notes
+        if (statistic === 'less_than_high_school_2010' || statistic === 'PercentTotalLowerthanHighSchoolDiploma_2014' || statistic === 'Education_2015') {
+             title = (statistic === 'less_than_high_school_2010') ? "%<HS(10)" : (statistic === 'PercentTotalLowerthanHighSchoolDiploma_2014' ? "%<HS(14)" : "%<HS(15)");
+             items=[{c:'#a50f15',l:'>30%'},{c:'#de2d26',l:'20-30%'},{c:'#fb6a4a',l:'15-20%'},{c:'#fc9272',l:'10-15%'},{c:'#fcbba1',l:'5-10%'},{c:'#fee5d9',l:'0-5%'}];
+        } else if (statistic === 'median_income_2009') {
+             title = "Med Inc($09)";
+             items=[{c:'#005a32',l:'>60k'},{c:'#238b45',l:'50-60k'},{c:'#41ab5d',l:'40-50k'},{c:'#74c476',l:'30-40k'},{c:'#a1d99b',l:'20-30k'},{c:'#d9f0a3',l:'<20k'}];
+        } else if (statistic === 'Aggregate12monthIncome2014') {
+             title = "Agg Inc($14)"; note = "Agg.";
+             items = [{ c: '#00441b', l: '>500M' }, { c: '#006d2c', l: '200-500M' }, { c: '#238b45', l: '100-200M' }, { c: '#41ab5d', l: '50-100M' }, { c: '#74c476', l: '10-50M' }, { c: '#a1d99b', l: '<10M' }];
+        } else if (statistic === 'Income_2015') {
+             title = "Agg Inc($15)"; note = "Agg.";
+             items = [{ c: '#084594', l: '>600M' }, { c: '#2171b5', l: '300-600M' }, { c: '#4292c6', l: '150-300M' }, { c: '#6baed6', l: '75-150M' }, { c: '#9ecae1', l: '25-75M' }, { c: '#c6dbef', l: '<25M' }];
+        } else if (statistic === 'percent_under_poverty_2010' || statistic === 'PercentBelowPoverty_2014' || statistic === 'Poverty_2015') {
+             title = (statistic === 'percent_under_poverty_2010') ? "%Pov(10)" : (statistic === 'PercentBelowPoverty_2014' ? "%Pov(14)" : "%<$15k(15)");
+             items=[{c:'#67000d',l:'>35%'},{c:'#a50f15',l:'25-35%'},{c:'#de2d26',l:'20-25%'},{c:'#fb6a4a',l:'15-20%'},{c:'#fc9272',l:'10-15%'},{c:'#fcbba1',l:'0-10%'}];
+        } else {
+             legendElement.innerHTML = `<h4>Legend</h4><p>N/A</p>`;
+             return;
+        }
+
+        legendElement.innerHTML = `<h4>${title}</h4>`;
+        if (note) legendElement.innerHTML += `<p style="font-size: 9px; margin-bottom: 2px; text-align: center;"><i>${note}</i></p>`;
+        items.forEach(i => legendElement.innerHTML += `<div class="legend-item"><div class="legend-color" style="background-color:${i.c}"></div><span>${i.l}</span></div>`);
+        legendElement.innerHTML += `<div class="legend-item"><div class="legend-color" style="background-color:${missing}"></div><span>N/A</span></div>`;
+    }
+
+
+    // --- Event Listeners Setup ---
+    let listenersAttached = false; // Flag to prevent duplicate listeners
+    function addEventListeners() {
+        if (listenersAttached) return; // Only attach once
+        console.log("Attaching event listeners");
+
+        // View Switching Buttons
+        viewSocioeconomicBtn.addEventListener('click', () => switchView('socioeconomic'));
+        viewPopulationBtn.addEventListener('click', () => switchView('population'));
+
+        // Split View Buttons
+        splitViewBtn.addEventListener('click', () => {
+            if (isSplitViewActive) {
+                deactivateSplitView();
+            } else {
+                 if (currentMapView !== 'socioeconomic') {
+                     alert("Split view comparison is only available for the Socioeconomic data view.");
+                     return;
+                 }
+                 populateSplitOptions(); // Refresh options each time
+                 splitSelectPopup.style.display = 'block';
+                 // Optional: Add click outside listener to close popup
+            }
+        });
+        cancelSplitBtn.addEventListener('click', () => {
+            splitSelectPopup.style.display = 'none';
+        });
+        applySplitBtn.addEventListener('click', () => {
+            if (selectedSplitOptions.length === 2) {
+                activateSplitView();
+            }
+        });
+
+
+        // Socioeconomic Year Selection Buttons
+        selectYear2010Btn.addEventListener('click', () => switchSocioeconomicYear('2010'));
+        selectYear2014Btn.addEventListener('click', () => switchSocioeconomicYear('2014'));
+        selectYear2015Btn.addEventListener('click', () => switchSocioeconomicYear('2015'));
+
+        // Socioeconomic Filter Buttons (using event delegation on parent divs)
+        socioeconomicFilters2010Div.addEventListener('click', (e) => {
+            if (e.target.tagName === 'BUTTON' && !isSplitViewActive) {
+                let statKey = null;
+                if (e.target.id === 'education-filter-2010') statKey = 'less_than_high_school_2010';
+                else if (e.target.id === 'income-filter-2010') statKey = 'median_income_2009';
+                else if (e.target.id === 'poverty-filter-2010') statKey = 'percent_under_poverty_2010';
+                if (statKey) applyChoroplethSocioeconomic(statKey, e.target);
+            }
+        });
+        socioeconomicFilters2014Div.addEventListener('click', (e) => {
+             if (e.target.tagName === 'BUTTON' && !isSplitViewActive) {
+                let statKey = null;
+                 if (e.target.id === 'education-filter-2014') statKey = 'PercentTotalLowerthanHighSchoolDiploma_2014';
+                 else if (e.target.id === 'income-filter-2014') statKey = 'Aggregate12monthIncome2014';
+                 else if (e.target.id === 'poverty-filter-2014') statKey = 'PercentBelowPoverty_2014';
+                 if (statKey) applyChoroplethSocioeconomic(statKey, e.target);
+             }
+        });
+        socioeconomicFilters2015Div.addEventListener('click', (e) => {
+             if (e.target.tagName === 'BUTTON' && !isSplitViewActive) {
+                 let statKey = null;
+                 if (e.target.id === 'education-filter-2015') statKey = 'Education_2015';
+                 else if (e.target.id === 'income-filter-2015') statKey = 'Income_2015';
+                 else if (e.target.id === 'poverty-filter-2015') statKey = 'Poverty_2015';
+                 if (statKey) applyChoroplethSocioeconomic(statKey, e.target);
+             }
+        });
+
+        // Socioeconomic Reset Button
+        document.getElementById('reset-filter-socioeconomic').addEventListener('click', resetSocioeconomicStyles);
+
+        // Population Filter Radio Buttons (using event delegation)
+        filtersPopulation.addEventListener('change', (e) => {
+            if (e.target.tagName === 'INPUT' && e.target.type === 'radio' && e.target.name === 'raceCategory' && !isSplitViewActive) {
+                if (e.target.checked) {
+                    applyChoroplethPopulation(e.target.value);
+                }
+            }
+        });
+         // Population Reset Button
+         document.getElementById('reset-filter-population').addEventListener('click', resetPopulationStyles);
+
+        // Add listener to close split popup if clicking outside of it
+         document.addEventListener('click', function(event) {
+              if (!splitSelectPopup.contains(event.target) && !splitViewBtn.contains(event.target) && splitSelectPopup.style.display === 'block') {
+                splitSelectPopup.style.display = 'none';
+              }
+         });
+
+
+        listenersAttached = true; // Mark listeners as attached
+    }
+
+
+    // --- Map Initialization ---
+    function initializeMap() {
+        console.log("Initializing map...");
+        // Clean up existing map instance if present (e.g., after exiting split view)
+        if (map) {
+            console.log("Removing existing main map instance.");
+            map.remove();
+            map = null;
+        }
+        // Ensure split view elements are hidden if initializing normally
+        if (isSplitViewActive) {
+             console.warn("InitializeMap called while split view was active. Deactivating first.");
+             // This path should ideally not happen if deactivateSplitView always calls initializeMap
+             // But as a safeguard:
+             deactivateSplitView(); // This will trigger initializeMap again, potential loop?
+             // BETTER: Just clean up split elements here without recursive call.
+             document.body.classList.remove('split-active');
+             if (mapLeft) mapLeft.remove();
+             if (mapRight) mapRight.remove();
+             mapLeft = null; mapRight = null;
+             mapSplitWrapper.style.display = 'none';
+             isSplitViewActive = false;
+             splitStatLeft = null; splitStatRight = null; selectedSplitOptions = [];
+             splitViewBtn.textContent = 'Compare Data'; splitViewBtn.classList.remove('active');
+        }
+        mapSplitWrapper.style.display = 'none';
+        mapDiv.style.display = 'block';
+
+
+        // Create the main map instance
+        map = L.map('map').setView([40.4406, -79.9959], 12);
+
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            maxZoom: 19,
+            attribution: '© OpenStreetMap contributors'
+        }).addTo(map);
+
+        // Join data if not already joined
+        if (!neighborhoodsWithEduInc) {
+             console.log("Joining socioeconomic data...");
+             neighborhoodsWithEduInc = joinSocioeconomicData();
+        } else { console.log("Socioeconomic data already joined."); }
+        if (!neighborhoodsWithCensus) {
+             console.log("Joining census data...");
+             neighborhoodsWithCensus = joinCensusData();
+         } else { console.log("Census data already joined."); }
+
+
+        // Set the default view (Socioeconomic) and add layers/reset styles
+        // Use switchViewInternal to avoid issues with split view check in switchView
+        switchViewInternal('socioeconomic');
+
+        // Attach button/control event listeners (only once)
+        addEventListeners();
+
+        console.log("Map initialized.");
+    }
+
+
+    // --- Initial Load ---
+    document.addEventListener('DOMContentLoaded', initializeMap);
+
+</script>
+
+</body>
+</html>
